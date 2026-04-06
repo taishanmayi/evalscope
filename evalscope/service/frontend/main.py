@@ -528,7 +528,7 @@ def create_summary_interface(service_url_input):
 # ---------------------------------------------------------------------------
 
 def create_interface():
-    with gr.Blocks(title='EvalScope Dashboard', theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title='EvalScope Dashboard') as demo:
         gr.Markdown('# 🚀 EvalScope 服务面板')
 
         # Global Service Settings (Top Bar)
@@ -579,4 +579,4 @@ def create_interface():
 
 if __name__ == '__main__':
     demo = create_interface()
-    demo.queue().launch()
+    demo.queue().launch(theme=gr.themes.Soft())
