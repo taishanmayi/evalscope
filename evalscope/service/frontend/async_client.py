@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import json
 from dotenv import dotenv_values
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 env = dotenv_values('.env')
@@ -119,6 +119,86 @@ class AsyncEvalClient:
                 await asyncio.sleep(interval)
 
         raise TimeoutError(f'Polling timeout: Attempted {max_attempts} times')
+
+    # ------------------------------------------------------------------
+    # Task history / database methods
+    # ------------------------------------------------------------------
+
+    async def get_tasks(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Return the list of tasks stored in the service database.
+
+        Args:
+            status: Filter by status (running/completed/error), or None for all.
+            limit:  Maximum number of records to return.
+        """
+        url = f'{self.base_url}/api/v1/tasks'
+        params: Dict[str, Any] = {'limit': limit}
+        if status:
+            params['status'] = status
+
+        try:
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('tasks', [])
+        except Exception as e:
+            print(f'[get_tasks] error: {e}')
+        return []
+
+    async def get_task_detail(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single task record together with its metric results."""
+        url = f'{self.base_url}/api/v1/tasks/{task_id}'
+        try:
+            async with self.session.get(url) as response:
+                if response.status == 200:
+                    return await response.json()
+        except Exception as e:
+            print(f'[get_task_detail] error: {e}')
+        return None
+
+    async def delete_task(self, task_id: str) -> bool:
+        """Delete a task record from the service database.
+
+        Returns True on success, False otherwise.
+        """
+        url = f'{self.base_url}/api/v1/tasks/{task_id}'
+        try:
+            async with self.session.delete(url) as response:
+                return response.status == 200
+        except Exception as e:
+            print(f'[delete_task] error: {e}')
+        return False
+
+    async def get_summary(
+        self,
+        model: Optional[str] = None,
+        dataset: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return aggregated score rows (model × dataset × metric).
+
+        Args:
+            model:   Substring filter on model name.
+            dataset: Substring filter on dataset name.
+        """
+        url = f'{self.base_url}/api/v1/tasks/summary'
+        params: Dict[str, Any] = {}
+        if model:
+            params['model'] = model
+        if dataset:
+            params['dataset'] = dataset
+
+        try:
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('summary', [])
+        except Exception as e:
+            print(f'[get_summary] error: {e}')
+        return []
 
 
 async def main():

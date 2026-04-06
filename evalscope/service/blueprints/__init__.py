@@ -3,5 +3,6 @@
 
 from .eval import bp_eval
 from .perf import bp_perf
+from .tasks import bp_tasks
 
-__all__ = ['bp_eval', 'bp_perf']
+__all__ = ['bp_eval', 'bp_perf', 'bp_tasks']
