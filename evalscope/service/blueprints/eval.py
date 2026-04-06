@@ -8,6 +8,7 @@ from evalscope.config import TaskConfig
 from evalscope.constants import EvalType
 from evalscope.report.combinator import get_data_frame, get_report_list
 from evalscope.utils.logger import get_logger
+from ..db import get_db
 from ..utils import (
     DEFAULT_MULTIMODAL_BENCHMARKS,
     DEFAULT_TEXT_BENCHMARKS,
@@ -56,6 +57,30 @@ def _build_result_table(work_dir: str) -> str:
     except Exception as e:
         logger.warning(f'Failed to build result table: {e}')
         return ''
+
+
+def _parse_results_from_reports(work_dir: str) -> List[Dict[str, Any]]:
+    """Extract per-dataset metric scores from report JSON files for DB storage."""
+    try:
+        reports_dir = os.path.join(work_dir, 'reports')
+        report_list = get_report_list([reports_dir])
+        if not report_list:
+            return []
+        df = get_data_frame(report_list, flatten_metrics=True, flatten_categories=False)
+        results = []
+        for _, row in df.iterrows():
+            results.append({
+                'model': str(row.get('Model', '')),
+                'dataset': str(row.get('Dataset', '')),
+                'metric': str(row.get('Metric', '')),
+                'score': float(row.get('Score', 0.0)),
+                'num': int(row['Num']) if 'Num' in row and row['Num'] is not None else None,
+                'details': None,
+            })
+        return results
+    except Exception as e:
+        logger.warning(f'Failed to parse results for DB: {e}')
+        return []
 
 
 _REQUIRED_FIELDS = ['model', 'datasets', 'api_url']
@@ -117,12 +142,20 @@ def _build_task_config(data: dict) -> TaskConfig:
 def _execute_task(task_id: str, task_config: TaskConfig, label: str = 'Task'):
     """Run the evaluation subprocess and return a Flask response."""
     create_log_file(task_id, os.path.join('logs', 'eval_log.log'))
+    db = get_db()
     try:
         result = run_in_subprocess(run_eval_wrapper, task_config)
+
+        # Persist results to the database
+        results = _parse_results_from_reports(task_config.work_dir)
+        db.update_task_status(task_id, 'completed')
+        db.save_task_results(task_id, results)
+
         table_str = _build_result_table(task_config.work_dir)
         logger.info(f'[{task_id}] {label} completed successfully')
         return jsonify({'status': 'completed', 'task_id': task_id, 'result': result, 'table': table_str})
     except Exception as e:
+        db.update_task_status(task_id, 'error', error=str(e))
         logger.error(f'[{task_id}] {label} failed: {e}')
         return jsonify({'status': 'error', 'task_id': task_id, 'error': str(e)}), 500
 
@@ -140,6 +173,10 @@ def run_evaluation():
 
     logger.info(f'[{task_id}] Running evaluation task for model: {task_config.model}')
     logger.info(f'[{task_id}] Datasets: {task_config.datasets}')
+
+    # Record the task in the database before starting
+    datasets = task_config.datasets if isinstance(task_config.datasets, list) else [task_config.datasets]
+    get_db().create_task(task_id, task_config.model, datasets, data, task_config.work_dir)
 
     return _execute_task(task_id, task_config, label='Task')
 
@@ -163,6 +200,10 @@ def resume_evaluation():
 
     logger.info(f'[{task_id}] Running resume task, work_dir: {work_dir}')
     logger.info(f'[{task_id}] Model: {task_config.model}, Datasets: {task_config.datasets}')
+
+    # Upsert the task record (create if missing, reset status to running)
+    datasets = task_config.datasets if isinstance(task_config.datasets, list) else [task_config.datasets]
+    get_db().create_task(task_id, task_config.model, datasets, data, work_dir)
 
     return _execute_task(task_id, task_config, label='Resume task')
 

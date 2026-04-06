@@ -5,7 +5,7 @@ from datetime import datetime
 from flask import Flask, jsonify
 
 from evalscope.utils.logger import get_logger
-from .blueprints import bp_eval, bp_perf
+from .blueprints import bp_eval, bp_perf, bp_tasks
 
 logger = get_logger()
 
@@ -21,6 +21,7 @@ def create_app():
     # Register blueprints
     app.register_blueprint(bp_eval)
     app.register_blueprint(bp_perf)
+    app.register_blueprint(bp_tasks)
 
     @app.route('/health', methods=['GET'])
     def health_check():
@@ -42,7 +43,11 @@ def create_app():
                 'POST /api/v1/perf/invoke': 'Run performance benchmark task (blocking)',
                 'GET  /api/v1/perf/log': 'Get performance benchmark log',
                 'GET  /api/v1/perf/progress': 'Get real-time performance benchmark progress',
-                'GET  /api/v1/perf/report': 'Get HTML performance benchmark report'
+                'GET  /api/v1/perf/report': 'Get HTML performance benchmark report',
+                'GET  /api/v1/tasks': 'List all evaluation tasks (history)',
+                'GET  /api/v1/tasks/summary': 'Get aggregated results summary',
+                'GET  /api/v1/tasks/<task_id>': 'Get task details and results',
+                'DELETE /api/v1/tasks/<task_id>': 'Delete a task record',
             }
         }), 404
 
@@ -75,6 +80,10 @@ def run_service(host: str = '0.0.0.0', port: int = 9000, debug: bool = False):
     logger.info('  GET  /api/v1/perf/log                - Get performance benchmark log')
     logger.info('  GET  /api/v1/perf/progress           - Get real-time performance benchmark progress')
     logger.info('  GET  /api/v1/perf/report             - Get HTML performance benchmark report')
+    logger.info('  GET  /api/v1/tasks                   - List all evaluation tasks (history)')
+    logger.info('  GET  /api/v1/tasks/summary           - Get aggregated results summary')
+    logger.info('  GET  /api/v1/tasks/<task_id>         - Get task details and results')
+    logger.info('  DELETE /api/v1/tasks/<task_id>       - Delete a task record')
     logger.info('Refer to docs for parameters: https://evalscope.readthedocs.io/en/latest/user_guides/service.html')
 
     app.run(host=host, port=port, debug=debug)
